@@ -98,7 +98,7 @@ function addLog(action, cls, group, note) {
   if (!remote.enabled) return;
   remote.logRows.push([
     new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-    cls + '반', group + '조', action, AREA_KO[note.area] || note.area, note.text, note.author
+    cls + '반', String.fromCharCode(64 + Number(group)) + '조', action, AREA_KO[note.area] || note.area, note.text, note.author
   ]);
   if (remote.logRows.length > 5000) remote.logRows.splice(0, remote.logRows.length - 5000);
 }

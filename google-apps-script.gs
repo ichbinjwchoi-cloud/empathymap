@@ -125,7 +125,7 @@ function writeCurrent_(data) {
       (groups[g].notes || []).slice().sort(function (x, y) {
         return AREA_ORDER.indexOf(x.area) - AREA_ORDER.indexOf(y.area) || x.createdAt - y.createdAt;
       }).forEach(function (n) {
-        rows.push([c + '반', String.fromCharCode(64 + Number(g)) + '조', AREA_KO[n.area] || n.area, safe_(n.text), safe_(n.author),
+        rows.push([c + '반', g + '조', AREA_KO[n.area] || n.area, safe_(n.text), safe_(n.author),
           Utilities.formatDate(new Date(n.createdAt), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')]);
       });
     });

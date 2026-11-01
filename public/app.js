@@ -88,7 +88,7 @@
   }
   function fillSelect(sel, n, suffix, val) {
     sel.innerHTML = '';
-    for (let i = 1; i <= n; i++) { const o = el('option', null, typeof suffix === 'function' ? suffix(i) : i + suffix); o.value = i; sel.appendChild(o); }
+    for (let i = 1; i <= n; i++) { const o = el('option', null, i + suffix); o.value = i; sel.appendChild(o); }
     if (val && +val <= n) sel.value = val;
   }
   function nameChips(box, names, emptyText) {
@@ -105,15 +105,13 @@
     return m;
   }
   function imgUrl(id) { return '/img/' + encodeURIComponent(id); }
-  // 조 이름: 1 → A조, 2 → B조 … (저장은 숫자 그대로)
-  function gName(g) { return String.fromCharCode(64 + Number(g)) + '조'; }
 
   // 수업 중 무료 서버가 잠들지 않도록 가끔 신호를 보냄
   setInterval(() => { if (S.mode) fetch('/healthz', { cache: 'no-store' }).catch(() => {}); }, 4 * 60 * 1000);
 
   // ---------- 입장 화면 ----------
   fillSelect($('#inCls'), 8, '반');
-  fillSelect($('#inGroup'), 6, gName);
+  fillSelect($('#inGroup'), 6, '조');
   const last = store.get('em_last') || {};
   $('#inName').value = last.name || '';
   if (last.cls) $('#inCls').value = last.cls;
@@ -123,7 +121,7 @@
     socket.emit('class:info', +$('#inCls').value, info => {
       if (!info) return;
       const cur = $('#inGroup').value || last.group;
-      fillSelect($('#inGroup'), info.groupCount, gName, cur);
+      fillSelect($('#inGroup'), info.groupCount, '조', cur);
       $('#loginTopic').textContent = info.topic;
     });
   }
@@ -430,7 +428,7 @@
   function renderStudent() {
     if (S.mode !== 'student') return;
     const w = $('#stWhere'); w.innerHTML = '';
-    w.appendChild(el('b', null, S.me.cls + '반 ' + gName(S.me.group)));
+    w.appendChild(el('b', null, S.me.cls + '반 ' + S.me.group + '조'));
     w.appendChild(el('span', null, ' · ' + S.me.name));
     w.appendChild(el('span', 'topic-pill', '주제: ' + S.info.topic));
     nameChips($('#stOnline'), S.names);
@@ -451,7 +449,7 @@
       $('#inCode').value = '';
       sess.del('em_session');
       sess.set('em_teacher', code);
-      fillSelect($('#tGroupCount'), T.maxGroups, i => i + '개 조 (A~' + String.fromCharCode(64 + i) + ')');
+      fillSelect($('#tGroupCount'), T.maxGroups, '개 조');
       if ($('#view-teacher').hidden) show('teacher');
       renderStatus();
       watch(T.cls, true);
@@ -569,7 +567,7 @@
       const card = el('button', 'gcard' + (filled === AREAS.length ? ' complete' : ''));
       card.type = 'button';
       const head = el('div', 'gc-head');
-      head.appendChild(el('h3', null, gName(g)));
+      head.appendChild(el('h3', null, g + '조'));
       const prog = el('div', 'gc-prog');
       const bar = el('div', 'bar'); const fill = el('i'); fill.style.width = (filled / AREAS.length * 100) + '%'; bar.appendChild(fill);
       prog.appendChild(bar);
@@ -609,7 +607,7 @@
 
   function renderDetail() {
     const g = T.open, grp = tg(g);
-    $('#tDetailTitle').textContent = T.cls + '반 ' + gName(g);
+    $('#tDetailTitle').textContent = T.cls + '반 ' + g + '조';
     members($('#tDetailMembers'), grp);
     $('#tPrev').disabled = g <= 1;
     $('#tNext').disabled = g >= T.info.groupCount;
@@ -698,7 +696,7 @@
     send('teacher:reset', { cls: T.cls });
   });
   $('#tResetGroup').addEventListener('click', () => {
-    if (!confirm(T.cls + '반 ' + gName(T.open) + ' 공감지도를 지울까요?')) return;
+    if (!confirm(T.cls + '반 ' + T.open + '조 공감지도를 지울까요?')) return;
     send('teacher:reset', { cls: T.cls, group: T.open });
   });
 
@@ -709,7 +707,7 @@
       tg(g).notes.slice()
         .filter(n => areaByKey(n.area))
         .sort((x, y) => order.indexOf(x.area) - order.indexOf(y.area) || x.createdAt - y.createdAt)
-        .forEach(n => rows.push([T.cls + '반', gName(g), areaByKey(n.area).title, n.text, n.author, new Date(n.createdAt).toLocaleString('ko-KR')]));
+        .forEach(n => rows.push([T.cls, g, areaByKey(n.area).title, n.text, n.author, new Date(n.createdAt).toLocaleString('ko-KR')]));
     }
     if (rows.length === 1) { toast('내려받을 포스트잇이 없어요.'); return; }
     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');

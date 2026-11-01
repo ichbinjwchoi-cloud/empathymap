@@ -47,7 +47,12 @@ function getGroup(cls, g) {
 }
 function classInfo(cls) {
   const c = getClass(cls);
-  return { topic: c.topic, groupCount: c.groupCount, locked: c.locked, image: c.image && db.images[c.image.id] ? c.image.id : null };
+  return { topic: c.topic, groupCount: c.groupCount, locked: c.locked, image: c.image && db.images[c.image.id] ? c.image.id : null, timer: timerInfo(cls) };
+}
+// 타이머: { state: 'idle' | 'running' | 'paused', endAt, left(멈췄을 때 남은 ms), total }
+function timerInfo(cls) {
+  const t = getClass(cls).timer || { state: 'idle' };
+  return Object.assign({}, t, { now: Date.now() });
 }
 
 // ---------- 저장: 서버 파일 + 구글 시트 ----------
@@ -443,6 +448,35 @@ io.on('connection', socket => {
     cleanImages();
     changed('db');
     list.forEach(emitClass);
+    ack({ ok: true });
+  });
+
+  socket.on('teacher:timer', (p, ack) => {
+    ack = fn(ack); p = p || {};
+    if (!socket.data.teacher || !validCls(p.cls)) return ack({ ok: false, msg: '교사 모드로 다시 들어와 주세요.' });
+    const cls = +p.cls, c = getClass(cls), now = Date.now();
+    const t = c.timer || { state: 'idle' };
+    const left = () => t.state === 'running' ? Math.max(0, t.endAt - now) : (t.left || 0);
+    if (p.action === 'start') {
+      const min = Math.round(Number(p.minutes));
+      if (!(min >= 1 && min <= 180)) return ack({ ok: false, msg: '1분에서 180분 사이로 적어 주세요.' });
+      c.timer = { state: 'running', endAt: now + min * 60000, total: min * 60000 };
+    } else if (p.action === 'add') {
+      if (t.state === 'idle') return ack({ ok: false, msg: '먼저 타이머를 시작해 주세요.' });
+      const l = left() + 60000;
+      c.timer = t.state === 'paused' ? Object.assign(t, { left: l, total: t.total + 60000 })
+        : { state: 'running', endAt: now + l, total: (t.total || 0) + 60000 };
+    } else if (p.action === 'pause') {
+      if (t.state !== 'running') return ack({ ok: true });
+      c.timer = { state: 'paused', left: left(), total: t.total };
+    } else if (p.action === 'resume') {
+      if (t.state !== 'paused') return ack({ ok: true });
+      c.timer = { state: 'running', endAt: now + (t.left || 0), total: t.total };
+    } else if (p.action === 'reset') {
+      c.timer = { state: 'idle' };
+    } else return ack({ ok: false });
+    changed('db');
+    io.to([cRoom(cls), tRoom(cls)]).emit('timer', { cls, timer: timerInfo(cls) });
     ack({ ok: true });
   });
 

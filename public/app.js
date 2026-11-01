@@ -37,7 +37,7 @@
 
   // ---------- 상태 ----------
   const S = { mode: null, me: null, info: null, notes: [], names: [] };
-  const T = { code: null, cls: 1, info: null, groups: {}, open: null, maxGroups: 10, status: null };
+  const T = { code: null, cls: Number(sess.get('em_tcls')) || 1, info: null, groups: {}, open: null, maxGroups: 10, status: null };
 
   // ---------- 연결 ----------
   // 다시 연결될 때 서버가 자동으로 원래 반·조에 넣어 주도록 정보를 함께 보냄
@@ -136,6 +136,7 @@
         return;
       }
       S.mode = 'student'; S.me = me; S.info = res.info; S.notes = res.notes || [];
+      setTimer(res.info.timer, true);
       store.set('em_last', me);
       sess.set('em_session', { mode: 'student', me });
       if ($('#view-student').hidden) show('student');
@@ -459,6 +460,8 @@
     send('teacher:watch', cls, (err, res) => {
       if (err || !res || !res.ok) return;
       T.cls = cls; T.info = res.info; T.groups = res.groups || {};
+      setTimer(res.info.timer, true);
+      sess.set('em_tcls', cls);
       if (res.status) T.status = res.status;
       if (!keepOpen) T.open = null;
       $('#tTopic').value = T.info.topic;
@@ -764,11 +767,11 @@
   socket.on('class:settings', ({ cls, info }) => {
     if (S.mode === 'student' && S.me.cls === cls) {
       const was = S.info;
-      S.info = info; renderStudent();
+      S.info = info; setTimer(info.timer); renderStudent();
       if (was.locked !== info.locked) toast(info.locked ? '🔒 선생님이 편집을 잠갔어요.' : '🔓 다시 쓸 수 있어요!');
       else if (was.image !== info.image && info.image) toast('📷 선생님이 주제 사진을 올렸어요. 가운데 사진을 눌러 보세요!', 3500);
     }
-    if (S.mode === 'teacher' && T.cls === cls) { T.info = info; renderTeacher(); }
+    if (S.mode === 'teacher' && T.cls === cls) { T.info = info; setTimer(info.timer); renderTeacher(); }
     if (!S.mode && +$('#inCls').value === cls) loadClassInfo();
   });
 
@@ -783,6 +786,112 @@
   });
 
   socket.on('save:status', s => { T.status = s; renderStatus(); });
+
+  // ---------- 타이머 ----------
+  // 서버 시계를 기준으로 남은 시간을 계산 (학생 태블릿과 TV가 같은 시간을 보여 줌)
+  const TM = { info: { state: 'idle' }, offset: 0, key: '', ended: false };
+  function setTimer(info, quiet) {
+    if (!info) return;
+    if (info.now) TM.offset = info.now - Date.now();
+    const key = [info.state, info.endAt, info.left, info.total].join('|');
+    if (key === TM.key) return;
+    TM.key = key; TM.info = info;
+    // 이미 끝난 타이머를 새로 받으면 소리·알림은 다시 내지 않음
+    TM.ended = quiet ? timeLeft() === 0 : false;
+    renderTimerControls();
+    tickTimer();
+  }
+  function timeLeft() {
+    const t = TM.info;
+    if (!t || t.state === 'idle') return null;
+    if (t.state === 'paused') return t.left || 0;
+    return Math.max(0, t.endAt - (Date.now() + TM.offset));
+  }
+  function fmtTime(ms) {
+    const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0');
+    return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss;
+  }
+  function renderTimerControls() {
+    const t = TM.info, active = t.state !== 'idle';
+    $('#ttIdle').hidden = active;
+    $('#ttRun').hidden = !active;
+    const paused = t.state === 'paused';
+    $('#ttPause').textContent = paused ? '계속' : '멈춤';
+    $('#ttPause').title = paused ? '다시 시작' : '잠깐 멈춤';
+    $('#tbPause').textContent = paused ? '계속' : '멈춤';
+    if (!active) $('#timerBig').hidden = true;
+    $('#stTimer').hidden = !active;
+  }
+  function tickTimer() {
+    const ms = timeLeft();
+    if (ms == null) return;
+    const txt = ms === 0 ? '시간 끝!' : fmtTime(ms);
+    const paused = TM.info.state === 'paused';
+    const warn = ms > 0 && ms <= 60000, done = ms === 0;
+    [['#ttTime'], ['#timerBigText'], ['#stTimerText']].forEach(([id]) => { $(id).textContent = txt; });
+    [$('#ttTime'), $('#timerBig'), $('#stTimer')].forEach(e => {
+      e.classList.toggle('warn', warn); e.classList.toggle('done', done); e.classList.toggle('paused', paused);
+    });
+    $('#timerBigLabel').textContent = done ? '⏰ 시간이 끝났어요' : paused ? '⏸ 잠깐 멈춤' : '남은 시간';
+    const total = TM.info.total || 1;
+    $('#timerBigBar').style.width = Math.max(0, Math.min(100, ms / total * 100)) + '%';
+    if (done && !TM.ended) {
+      TM.ended = true;
+      if (S.mode === 'teacher') { beep(); toast('⏰ 시간이 끝났어요!', 4000); }
+      if (S.mode === 'student') toast('⏰ 시간이 끝났어요! 선생님 말씀을 들어 주세요.', 4000);
+    }
+  }
+  setInterval(tickTimer, 250);
+
+  let audio = null;
+  function unlockAudio() {
+    try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) {}
+  }
+  function beep() {
+    if (!audio) return;
+    try {
+      [0, 0.45, 0.9].forEach(at => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.type = 'sine'; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, audio.currentTime + at);
+        g.gain.exponentialRampToValueAtTime(0.35, audio.currentTime + at + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + at + 0.35);
+        o.connect(g).connect(audio.destination);
+        o.start(audio.currentTime + at); o.stop(audio.currentTime + at + 0.4);
+      });
+    } catch (e) {}
+  }
+
+  function timerAction(action, extra) {
+    unlockAudio();
+    send('teacher:timer', Object.assign({ cls: T.cls, action }, extra || {}), (err, res) => {
+      if (err) toast('연결이 불안정해요. 다시 눌러 주세요.');
+      else if (res && !res.ok) toast(res.msg || '타이머를 바꾸지 못했어요.');
+    });
+  }
+  const savedMin = store.get('em_tmin');
+  if (savedMin) $('#ttMin').value = savedMin;
+  $('#ttStart').addEventListener('click', () => {
+    const m = Math.round(Number($('#ttMin').value));
+    if (!(m >= 1 && m <= 180)) { toast('1분에서 180분 사이로 적어 주세요.'); $('#ttMin').focus(); return; }
+    store.set('em_tmin', m);
+    timerAction('start', { minutes: m });
+  });
+  $('#ttMin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#ttStart').click(); });
+  const addMin = () => timerAction('add');
+  const togglePause = () => timerAction(TM.info.state === 'paused' ? 'resume' : 'pause');
+  const stopTimer = () => { if (confirm('타이머를 끝낼까요?')) timerAction('reset'); };
+  $('#ttAdd').addEventListener('click', addMin); $('#tbAdd').addEventListener('click', addMin);
+  $('#ttPause').addEventListener('click', togglePause); $('#tbPause').addEventListener('click', togglePause);
+  $('#ttStop').addEventListener('click', stopTimer); $('#tbStop').addEventListener('click', stopTimer);
+  const openBig = () => { unlockAudio(); $('#timerBig').hidden = false; tickTimer(); };
+  $('#ttTime').addEventListener('click', openBig); $('#ttBig').addEventListener('click', openBig);
+  $('#tbClose').addEventListener('click', () => { $('#timerBig').hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#timerBig').hidden) $('#timerBig').hidden = true; });
+
+  socket.on('timer', ({ cls, timer }) => {
+    if ((S.mode === 'student' && S.me && S.me.cls === cls) || (S.mode === 'teacher' && T.cls === cls)) setTimer(timer);
+  });
 
   // 연결이 끊겼다 다시 붙으면 최신 내용으로 다시 맞춤
   let wasDown = false, downTimer = null;

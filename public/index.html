@@ -45,6 +45,7 @@
     <div class="brand">공감지도</div>
     <div class="where" id="stWhere"></div>
     <div class="online" id="stOnline"></div>
+    <div id="stTimer" class="timer-pill" hidden><span class="tp-ico">⏱</span><b id="stTimerText">0:00</b></div>
     <button id="btnLeave" class="btn ghost">나가기</button>
   </header>
   <div id="lockBanner" class="lock-banner" hidden>🔒 선생님이 지금은 편집을 잠가 두었어요. 앞을 봐 주세요!</div>
@@ -57,6 +58,21 @@
   <header class="topbar">
     <div class="brand">공감지도 <span class="tag">교사</span></div>
     <nav id="clsTabs" class="cls-tabs" aria-label="반 선택"></nav>
+    <div class="ttimer" id="tTimer">
+      <div class="tt-idle" id="ttIdle">
+        <span class="tt-ico" aria-hidden="true">⏱</span>
+        <input id="ttMin" type="number" min="1" max="180" step="1" inputmode="numeric" value="5" aria-label="타이머 분">
+        <span class="tt-unit">분</span>
+        <button id="ttStart" class="btn primary">시작</button>
+      </div>
+      <div class="tt-run" id="ttRun" hidden>
+        <button id="ttTime" class="tt-time" title="크게 보기" type="button">0:00</button>
+        <button id="ttAdd" class="btn" title="1분 더하기">+1분</button>
+        <button id="ttPause" class="btn" title="잠깐 멈춤">멈춤</button>
+        <button id="ttStop" class="btn" title="타이머 끝내기">끝내기</button>
+        <button id="ttBig" class="btn icon" title="크게 보기">⤢</button>
+      </div>
+    </div>
     <div id="saveStatus" class="save-status"></div>
     <div class="view-tools">
       <button id="tZoomOut" class="btn ghost icon" title="글자 작게" aria-label="글자 작게">가−</button>
@@ -116,6 +132,19 @@
       <button id="mCancel" class="btn ghost">취소</button>
       <button id="mOk" class="btn primary">붙이기</button>
     </div>
+  </div>
+</div>
+
+<!-- 타이머 크게 보기 (TV) -->
+<div id="timerBig" class="timer-big" hidden>
+  <div class="tb-label" id="timerBigLabel">남은 시간</div>
+  <div class="tb-time" id="timerBigText">0:00</div>
+  <div class="tb-bar"><i id="timerBigBar"></i></div>
+  <div class="tb-actions">
+    <button id="tbAdd" class="btn">+1분</button>
+    <button id="tbPause" class="btn">멈춤</button>
+    <button id="tbStop" class="btn">끝내기</button>
+    <button id="tbClose" class="btn ghost">작게 보기</button>
   </div>
 </div>
 

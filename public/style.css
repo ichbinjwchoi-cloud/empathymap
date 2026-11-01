@@ -272,3 +272,34 @@ html.touch .modal-card{margin:0 auto}
 @media (min-width:1700px){
   .board,.dash,.tsummary,.tcontrols,.detail-bar,.mission{max-width:1800px}
 }
+
+/* ---------- 타이머 ---------- */
+.ttimer{display:flex;align-items:center}
+.tt-idle,.tt-run{display:flex;align-items:center;gap:6px}
+.tt-ico{font-size:1.15rem}
+.tt-idle input{width:4.2em;min-height:40px;border:1.5px solid var(--line);border-radius:10px;padding:6px 8px;text-align:center;font-weight:900;font-size:1.05rem;background:#fff}
+.tt-idle input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,111,94,.15)}
+.tt-unit{font-weight:700}
+.tt-time{min-width:5.2em;min-height:42px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:900;font-size:1.35rem;letter-spacing:.02em;font-variant-numeric:tabular-nums;padding:4px 12px;cursor:zoom-in}
+.tt-time.warn{background:var(--warn)}
+.tt-time.done{background:var(--danger);animation:blink 1s steps(2,start) infinite}
+.tt-time.paused{background:#8d867b}
+@keyframes blink{50%{opacity:.55}}
+
+.timer-pill{display:flex;align-items:center;gap:6px;background:var(--ink);color:#fff;border-radius:999px;padding:5px 14px;font-weight:900;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.timer-pill.warn{background:var(--warn)}
+.timer-pill.done{background:var(--danger);animation:blink 1s steps(2,start) infinite}
+.timer-pill.paused{background:#8d867b}
+
+.timer-big{position:fixed;inset:0;z-index:80;background:#1f1d1a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;padding:4vh 4vw}
+.tb-label{font-size:clamp(1.2rem,3.2vw,2.6rem);font-weight:700;opacity:.85}
+.tb-time{font-size:clamp(5rem,24vw,22rem);font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.timer-big.warn .tb-time{color:#ffb44d}
+.timer-big.done .tb-time{color:#ff6b5e;animation:blink 1s steps(2,start) infinite}
+.timer-big.paused .tb-time{opacity:.6}
+.tb-bar{width:min(80vw,1200px);height:14px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden}
+.tb-bar i{display:block;height:100%;background:#5fc39a;border-radius:999px;transition:width .25s linear}
+.timer-big.warn .tb-bar i{background:#ffb44d}
+.tb-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:2vh}
+.tb-actions .btn{font-size:clamp(1rem,1.6vw,1.5rem);padding:12px 26px;min-height:56px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25);color:#fff}
+.tb-actions .btn:hover{background:rgba(255,255,255,.2)}

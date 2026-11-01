@@ -1,0 +1,16 @@
+{
+  "name": "empathy-map",
+  "version": "1.0.0",
+  "description": "조별 실시간 공감지도 만들기 (중2 도덕 수업용)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

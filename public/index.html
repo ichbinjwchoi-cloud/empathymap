@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공감지도 만들기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="conn" class="conn" hidden>연결이 끊겼어요. 다시 연결하는 중…</div>
+
+<!-- 입장 화면 -->
+<section id="view-login" class="view">
+  <div class="login-card">
+    <div class="login-map" aria-hidden="true">
+      <span class="lm lm-think"></span><span class="lm lm-hear"></span><span class="lm lm-face">🙂</span><span class="lm lm-say"></span><span class="lm lm-pain"></span><span class="lm lm-gain"></span>
+    </div>
+    <div class="login-badge">도덕 · 2학년</div>
+    <h1>공감지도 만들기</h1>
+    <p class="login-sub">조원들과 함께 <b id="loginTopic">난민</b>의 마음을 들여다봐요</p>
+    <label class="field">이름<input id="inName" maxlength="12" placeholder="예) 김민수" autocomplete="off"></label>
+    <div class="row2">
+      <label class="field">반<select id="inCls"></select></label>
+      <label class="field">조<select id="inGroup"></select></label>
+    </div>
+    <button id="btnJoin" class="btn primary big">입장하기</button>
+    <div class="teacher-entry">
+      <button id="btnTeacherToggle" class="linkbtn" type="button">교사 모드</button>
+      <div id="teacherForm" class="teacher-form" hidden>
+        <input id="inCode" type="password" inputmode="numeric" maxlength="8" placeholder="교사 코드" autocomplete="off">
+        <button id="btnTeacher" class="btn">들어가기</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 학생 화면 -->
+<section id="view-student" class="view" hidden>
+  <header class="topbar">
+    <div class="brand">공감지도</div>
+    <div class="where" id="stWhere"></div>
+    <div class="online" id="stOnline"></div>
+    <button id="btnLeave" class="btn ghost">나가기</button>
+  </header>
+  <div id="lockBanner" class="lock-banner" hidden>🔒 선생님이 지금은 편집을 잠가 두었어요. 앞을 봐 주세요!</div>
+  <main id="stBoard" class="board-wrap"></main>
+</section>
+
+<!-- 교사 화면 -->
+<section id="view-teacher" class="view" hidden>
+  <header class="topbar">
+    <div class="brand">공감지도 <span class="tag">교사</span></div>
+    <nav id="clsTabs" class="cls-tabs" aria-label="반 선택"></nav>
+    <button id="btnTLeave" class="btn ghost">나가기</button>
+  </header>
+  <div class="tcontrols">
+    <label class="inline">주제 <input id="tTopic" maxlength="20"></label>
+    <button id="tTopicApply" class="btn">주제 바꾸기</button>
+    <label class="inline">조 수 <select id="tGroupCount"></select></label>
+    <button id="tLock" class="btn"></button>
+    <span class="spacer"></span>
+    <button id="tExport" class="btn">CSV 내려받기</button>
+    <button id="tResetAll" class="btn danger">이 반 전체 지우기</button>
+  </div>
+  <div id="tSummary" class="tsummary"></div>
+  <main id="tDash" class="dash"></main>
+  <section id="tDetail" hidden>
+    <div class="detail-bar">
+      <button id="tBack" class="btn">← 전체 조 보기</button>
+      <button id="tPrev" class="btn ghost" title="이전 조">‹</button>
+      <h2 id="tDetailTitle"></h2>
+      <button id="tNext" class="btn ghost" title="다음 조">›</button>
+      <div class="online" id="tDetailOnline"></div>
+      <span class="spacer"></span>
+      <button id="tResetGroup" class="btn danger">이 조 지우기</button>
+    </div>
+    <div id="tBoard" class="board-wrap"></div>
+  </section>
+</section>
+
+<!-- 포스트잇 작성 창 -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle"></h3>
+    <p id="mQ" class="mq"></p>
+    <div id="mPreview" class="mpreview">
+      <textarea id="mText" maxlength="200" rows="4" placeholder="생각을 적어 주세요 (Enter: 붙이기, Shift+Enter: 줄바꿈)"></textarea>
+    </div>
+    <div class="mrow"><div id="mColors" class="colors"></div><span id="mCount" class="count">0/200</span></div>
+    <label id="mAreaWrap" class="field marea">칸 옮기기<select id="mArea"></select></label>
+    <div class="mactions"><button id="mCancel" class="btn ghost">취소</button><button id="mOk" class="btn primary">붙이기</button></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

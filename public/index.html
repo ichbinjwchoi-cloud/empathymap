@@ -2,7 +2,8 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<meta name="theme-color" content="#2f6f5e">
 <title>공감지도 만들기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +12,7 @@
 </head>
 <body>
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="conn" class="conn" hidden>연결이 끊겼어요. 다시 연결하는 중…</div>
+<div id="conn" class="conn" hidden>인터넷 연결이 끊겼어요. 다시 연결하는 중… (쓴 내용은 연결되면 저장돼요)</div>
 
 <!-- 입장 화면 -->
 <section id="view-login" class="view">
@@ -47,6 +48,7 @@
     <button id="btnLeave" class="btn ghost">나가기</button>
   </header>
   <div id="lockBanner" class="lock-banner" hidden>🔒 선생님이 지금은 편집을 잠가 두었어요. 앞을 봐 주세요!</div>
+  <div id="mission" class="mission"></div>
   <main id="stBoard" class="board-wrap"></main>
 </section>
 
@@ -55,26 +57,41 @@
   <header class="topbar">
     <div class="brand">공감지도 <span class="tag">교사</span></div>
     <nav id="clsTabs" class="cls-tabs" aria-label="반 선택"></nav>
+    <div id="saveStatus" class="save-status"></div>
+    <div class="view-tools">
+      <button id="tZoomOut" class="btn ghost icon" title="글자 작게" aria-label="글자 작게">가−</button>
+      <button id="tZoomIn" class="btn ghost icon" title="글자 크게 (TV)" aria-label="글자 크게">가+</button>
+      <button id="tFull" class="btn ghost icon" title="전체 화면" aria-label="전체 화면">⛶</button>
+    </div>
     <button id="btnTLeave" class="btn ghost">나가기</button>
   </header>
-  <div class="tcontrols">
-    <label class="inline">주제 <input id="tTopic" maxlength="20"></label>
-    <button id="tTopicApply" class="btn">주제 바꾸기</button>
-    <label class="inline">조 수 <select id="tGroupCount"></select></label>
-    <button id="tLock" class="btn"></button>
-    <span class="spacer"></span>
-    <button id="tExport" class="btn">CSV 내려받기</button>
-    <button id="tResetAll" class="btn danger">이 반 전체 지우기</button>
+  <div class="tcontrols" id="tControls">
+    <div class="tc-topic">
+      <button id="tImgBtn" class="topic-thumb" title="주제 사진 올리기" type="button"><span id="tImgThumb">📷</span></button>
+      <input id="tImgFile" type="file" accept="image/*" hidden>
+      <label class="inline">주제 <input id="tTopic" maxlength="20"></label>
+      <button id="tTopicApply" class="btn">주제 바꾸기</button>
+      <button id="tImgPick" class="btn">📷 사진 올리기</button>
+      <button id="tImgRemove" class="btn ghost" hidden>사진 빼기</button>
+      <label class="check"><input type="checkbox" id="tAll"> 1~8반 모두에 적용</label>
+    </div>
+    <div class="tc-class">
+      <label class="inline">조 수 <select id="tGroupCount"></select></label>
+      <button id="tLock" class="btn"></button>
+      <span class="spacer"></span>
+      <button id="tExport" class="btn">CSV 내려받기</button>
+      <button id="tResetAll" class="btn danger">이 반 전체 지우기</button>
+    </div>
   </div>
   <div id="tSummary" class="tsummary"></div>
   <main id="tDash" class="dash"></main>
   <section id="tDetail" hidden>
     <div class="detail-bar">
       <button id="tBack" class="btn">← 전체 조 보기</button>
-      <button id="tPrev" class="btn ghost" title="이전 조">‹</button>
+      <button id="tPrev" class="btn ghost" title="이전 조 (←)">‹</button>
       <h2 id="tDetailTitle"></h2>
-      <button id="tNext" class="btn ghost" title="다음 조">›</button>
-      <div class="online" id="tDetailOnline"></div>
+      <button id="tNext" class="btn ghost" title="다음 조 (→)">›</button>
+      <div class="members" id="tDetailMembers"></div>
       <span class="spacer"></span>
       <button id="tResetGroup" class="btn danger">이 조 지우기</button>
     </div>
@@ -82,18 +99,30 @@
   </section>
 </section>
 
-<!-- 포스트잇 작성 창 -->
+<!-- 포스트잇 창 -->
 <div id="modal" class="modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mTitle">
     <h3 id="mTitle"></h3>
     <p id="mQ" class="mq"></p>
     <div id="mPreview" class="mpreview">
-      <textarea id="mText" maxlength="200" rows="4" placeholder="생각을 적어 주세요 (Enter: 붙이기, Shift+Enter: 줄바꿈)"></textarea>
+      <textarea id="mText" maxlength="200" rows="4" placeholder="생각을 적어 주세요. 다 쓰면 아래 [붙이기] 버튼을 눌러요."></textarea>
+      <div id="mAuthor" class="mauthor"></div>
     </div>
     <div class="mrow"><div id="mColors" class="colors"></div><span id="mCount" class="count">0/200</span></div>
     <label id="mAreaWrap" class="field marea">칸 옮기기<select id="mArea"></select></label>
-    <div class="mactions"><button id="mCancel" class="btn ghost">취소</button><button id="mOk" class="btn primary">붙이기</button></div>
+    <div class="mactions">
+      <button id="mDelete" class="btn danger" hidden>지우기</button>
+      <span class="spacer"></span>
+      <button id="mCancel" class="btn ghost">취소</button>
+      <button id="mOk" class="btn primary">붙이기</button>
+    </div>
   </div>
+</div>
+
+<!-- 사진 크게 보기 -->
+<div id="imgView" class="imgview" hidden>
+  <img id="imgViewImg" alt="">
+  <div class="imgview-cap" id="imgViewCap"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

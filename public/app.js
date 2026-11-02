@@ -14,6 +14,14 @@
   const MIN_PER_STUDENT = 2;   // 한 사람당 최소 포스트잇 수
   const COLORS = ['yellow', 'pink', 'green', 'blue', 'orange', 'purple'];
   const COLOR_KO = { yellow: '노랑', pink: '분홍', green: '초록', blue: '하늘', orange: '주황', purple: '보라' };
+  // 발표 시간 스티커
+  const REACTIONS = [
+    { key: 'heart', emoji: '❤️', ko: '하트' },
+    { key: 'best', emoji: '👍', ko: '최고' },
+    { key: 'laugh', emoji: '😂', ko: '웃음' },
+    { key: 'cry', emoji: '😢', ko: '눈물' },
+    { key: 'angry', emoji: '😡', ko: '화남' }
+  ];
   const ZOOMS = [1, 1.2, 1.4, 1.65, 1.9];
   // 손가락으로 쓰는 기기(갤럭시탭 등)인지
   const TOUCH = window.matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -36,7 +44,7 @@
   if (!clientId) { clientId = uuid(); store.set('em_cid', clientId); }
 
   // ---------- 상태 ----------
-  const S = { mode: null, me: null, info: null, notes: [], names: [] };
+  const S = { mode: null, me: null, info: null, notes: [], names: [], presentNotes: [] };
   const T = { code: null, cls: Number(sess.get('em_tcls')) || 1, info: null, groups: {}, open: null, maxGroups: 10, status: null };
 
   // ---------- 연결 ----------
@@ -135,7 +143,7 @@
         sess.del('em_session');
         return;
       }
-      S.mode = 'student'; S.me = me; S.info = res.info; S.notes = res.notes || [];
+      S.mode = 'student'; S.me = me; S.info = res.info; S.notes = res.notes || []; S.presentNotes = res.presentNotes || [];
       setTimer(res.info.timer, true);
       store.set('em_last', me);
       sess.set('em_session', { mode: 'student', me });
@@ -171,6 +179,7 @@
     root.innerHTML = '';
     const board = el('div', 'board');
     const readOnly = ctx.locked && !ctx.teacher;
+    board.classList.toggle('reacting', !!ctx.react);
 
     AREAS.forEach(a => {
       const notes = ctx.notes.filter(n => n.area === a.key).sort((x, y) => x.createdAt - y.createdAt);
@@ -185,6 +194,7 @@
       head.appendChild(ttl);
       const add = el('button', 'add', '+ 붙이기');
       add.disabled = readOnly;
+      add.hidden = !!ctx.react;
       add.addEventListener('click', () => openModal({ mode: 'add', area: a, ctx }));
       head.appendChild(add);
       cell.appendChild(head);
@@ -204,16 +214,17 @@
       notes.forEach(n => wall.appendChild(noteEl(n, ctx, readOnly)));
       cell.appendChild(wall);
 
-      if (!readOnly && !TOUCH) {
+      // 끌어서 옮기기는 교사 노트북(마우스)에서만 — 태블릿에서 길게 누르다 실수로 옮겨지는 것을 막음
+      if (!readOnly && ctx.teacher && !TOUCH) {
         cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('over'); });
         cell.addEventListener('dragleave', e => { if (!cell.contains(e.relatedTarget)) cell.classList.remove('over'); });
         cell.addEventListener('drop', e => {
           e.preventDefault(); cell.classList.remove('over');
           const id = e.dataTransfer.getData('text/plain');
           const n = ctx.notes.find(x => x.id === id);
-          if (n && n.area !== a.key) ctx.emit('note:update', { id, area: a.key }, (err, res) => {
+          if (n && n.area !== a.key) ctx.emit('note:update', { id, area: a.key, fromArea: n.area }, (err, res) => {
             if (err) toast('연결이 불안정해요. 다시 옮겨 주세요.');
-            else if (res && !res.ok && res.msg) toast(res.msg);
+            else if (res && res.msg) toast(res.msg);
           });
         });
       }
@@ -232,7 +243,7 @@
       persona.innerHTML = '<svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="44" r="22"/><path d="M20 112c4-26 20-40 40-40s36 14 40 40z"/></svg>';
     }
     center.appendChild(persona);
-    center.appendChild(el('div', 'persona-label', '공감 대상'));
+    center.appendChild(el('div', 'persona-label', ctx.react ? '📺 ' + ctx.react.group + '조 공감지도' : '공감 대상'));
     center.appendChild(el('div', 'persona-topic', ctx.topic || ''));
     center.appendChild(el('div', 'persona-total', '포스트잇 ' + ctx.notes.length + '장' + (ctx.image ? ' · 사진을 누르면 크게 보여요' : '')));
     board.appendChild(center);
@@ -242,8 +253,10 @@
   }
 
   function noteEl(n, ctx, readOnly) {
-    const d = el('button', 'note c-' + (COLORS.includes(n.color) ? n.color : 'yellow'));
-    d.type = 'button';
+    const d = el('div', 'note c-' + (COLORS.includes(n.color) ? n.color : 'yellow') + (ctx.react ? ' reactable' : ''));
+    d.dataset.id = n.id;
+    d.tabIndex = 0;
+    d.setAttribute('role', 'button');
     const mine = !ctx.teacher && isMine(n);
     if (mine) d.classList.add('mine');
     if (n.owner === 'teacher') d.classList.add('by-teacher');
@@ -252,9 +265,12 @@
     d.appendChild(el('span', 'ntext', n.text));
     d.appendChild(el('span', 'nauthor', n.author + (mine ? ' (나)' : '')));
     const canEdit = !readOnly && (ctx.teacher || mine);
-    d.title = readOnly ? '' : canEdit ? '눌러서 고치기·옮기기·지우기' : '눌러서 다른 칸으로 옮기기';
-    d.addEventListener('click', () => openModal({ mode: 'edit', note: n, ctx, canEdit, readOnly }));
-    if (!readOnly && !TOUCH) {
+    d.title = readOnly ? '눌러서 크게 보기' : canEdit ? '눌러서 고치기·옮기기·지우기' : '눌러서 크게 보기 · 다른 칸으로 옮기기';
+    const open = () => openModal({ mode: 'edit', note: n, ctx, canEdit, readOnly });
+    d.addEventListener('click', open);
+    d.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === d) open(); });
+    d.appendChild(reactionsEl(n, ctx));
+    if (!readOnly && ctx.teacher && !TOUCH) {
       d.draggable = true;
       d.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', n.id); d.classList.add('dragging'); });
       d.addEventListener('dragend', () => d.classList.remove('dragging'));
@@ -263,6 +279,40 @@
   }
   function isMine(n) {
     return S.me && (n.owner === clientId + '|' + S.me.name || n.owner === clientId);
+  }
+  function myKey() { return S.mode === 'teacher' ? 'teacher' : (S.me ? clientId + '|' + S.me.name : ''); }
+  // 스티커: 발표 시간에는 누를 수 있는 버튼, 평소에는 붙은 스티커만 작게
+  function reactionsEl(n, ctx) {
+    const r = n.reactions || {};
+    if (ctx.react) {
+      const bar = el('div', 'rxbar');
+      REACTIONS.forEach(x => {
+        const list = r[x.key] || [];
+        const b = el('button', 'rx' + (list.includes(myKey()) ? ' on' : ''));
+        b.type = 'button';
+        b.title = x.ko + (list.includes(myKey()) ? ' (다시 누르면 떼기)' : ' 스티커 붙이기');
+        b.setAttribute('aria-label', x.ko + ' ' + list.length);
+        b.appendChild(el('span', 'rx-e', x.emoji));
+        b.appendChild(el('b', null, list.length ? String(list.length) : ''));
+        b.addEventListener('click', ev => {
+          ev.stopPropagation();
+          b.classList.toggle('on'); b.classList.add('pulse');
+          send('note:react', { cls: ctx.react.cls, group: ctx.react.group, id: n.id, type: x.key }, (err, res) => {
+            if (err) toast('연결이 불안정해요. 다시 눌러 주세요.');
+            else if (res && !res.ok && res.msg) toast(res.msg);
+          });
+        });
+        bar.appendChild(b);
+      });
+      return bar;
+    }
+    const sum = el('div', 'rxsum');
+    REACTIONS.forEach(x => { const c = (r[x.key] || []).length; if (c) sum.appendChild(el('span', null, x.emoji + c)); });
+    return sum;
+  }
+  function reactionText(n) {
+    const r = n.reactions || {};
+    return REACTIONS.map(x => (r[x.key] || []).length ? x.emoji + (r[x.key] || []).length : '').filter(Boolean).join(' ');
   }
 
   // ---------- 사진 크게 보기 ----------
@@ -313,17 +363,24 @@
     $('#mColors').hidden = !M.canEdit;
     $('#mCount').hidden = !M.canEdit;
     $('#mAreaWrap').hidden = !canMove;
-    if (!add) areaSel.value = o.note.area;
+    if (!add) { areaSel.value = o.note.area; M.origArea = o.note.area; }
     $('#mDelete').hidden = !(!add && M.canEdit);
     $('#mOk').hidden = !(M.canEdit || canMove);
     $('#mOk').textContent = add ? '붙이기' : M.canEdit ? '저장' : '옮기기';
     $('#mCancel').textContent = (M.canEdit || canMove) ? '취소' : '닫기';
     setBusy(false);
+    updateMoveBtn();
     $('#modal').hidden = false;
     document.body.classList.add('modal-open');
     // 태블릿에서 키보드가 바로 올라오도록 새 포스트잇은 곧바로 입력칸에 커서
     if (M.canEdit) { tx.focus({ preventScroll: true }); if (!add) tx.setSelectionRange(tx.value.length, tx.value.length); }
   }
+  // 친구 포스트잇: 칸을 실제로 바꿨을 때만 [옮기기]를 누를 수 있음
+  function updateMoveBtn() {
+    if (!M || M.mode === 'add' || M.canEdit || !M.canMove) return;
+    $('#mOk').disabled = areaSel.value === M.origArea;
+  }
+  areaSel.addEventListener('change', updateMoveBtn);
   function closeModal() {
     $('#modal').hidden = true; M = null;
     document.body.classList.remove('modal-open');
@@ -345,8 +402,11 @@
       store.set('em_color', M.color);
       ev = 'note:add'; p = { id: M.newId, area: M.area.key, text, color: M.color };
     } else {
-      ev = 'note:update'; p = { id: M.note.id, area: areaSel.value };
+      ev = 'note:update'; p = { id: M.note.id };
+      // 칸을 바꿨을 때만 옮기기 정보를 보냄 (창을 연 사이 친구가 옮긴 포스트잇을 되돌리지 않도록)
+      if (areaSel.value !== M.origArea) { p.area = areaSel.value; p.fromArea = M.origArea; }
       if (M.canEdit) { p.text = text; p.color = M.color; }
+      if (!M.canEdit && !p.area) { closeModal(); return; }
     }
     setBusy(true);
     M.ctx.emit(ev, p, (err, res) => {
@@ -354,7 +414,8 @@
       setBusy(false);
       if (err) { toast('인터넷 연결이 불안정해요. 잠시 후 다시 눌러 주세요. (쓴 내용은 그대로 있어요)', 3500); return; }
       if (!res || !res.ok) { toast((res && res.msg) || '저장하지 못했어요. 다시 눌러 주세요.'); return; }
-      if (M.mode === 'add') toast('포스트잇을 붙였어요!', 1500);
+      if (res.msg) toast(res.msg, 3500);
+      else if (M.mode === 'add') toast('포스트잇을 붙였어요!', 1500);
       closeModal();
     });
   }
@@ -390,6 +451,13 @@
   });
 
   // ---------- 학생 화면 ----------
+  function presentCtx(g) {
+    return {
+      topic: S.info.topic, image: S.info.image, notes: S.presentNotes, locked: true, teacher: false,
+      react: { cls: S.me.cls, group: g },
+      emit: (ev, p, cb) => send(ev, p, cb)
+    };
+  }
   function studentCtx() {
     return {
       topic: S.info.topic, image: S.info.image, notes: S.notes, locked: S.info.locked, teacher: false,
@@ -433,10 +501,19 @@
     w.appendChild(el('span', null, ' · ' + S.me.name));
     w.appendChild(el('span', 'topic-pill', '주제: ' + S.info.topic));
     nameChips($('#stOnline'), S.names);
-    $('#lockBanner').hidden = !S.info.locked;
-    if (!$('#modal').hidden && S.info.locked && M && !M.ctx.teacher) closeModal();
+    const pres = S.info.present;
+    document.body.classList.toggle('presenting', !!pres);
+    $('#lockBanner').hidden = !S.info.locked || !!pres;
+    $('#mission').hidden = !!pres;
+    const pb = $('#presentBanner'); pb.hidden = !pres;
+    if (pres) {
+      pb.innerHTML = '';
+      pb.appendChild(el('b', null, '📺 다 함께 보기 · ' + pres + '조 공감지도' + (pres === S.me.group ? ' (우리 조!)' : '')));
+      pb.appendChild(el('span', null, '공감되는 포스트잇에 ❤️ 👍 😂 😢 😡 스티커를 붙여 보세요. 다시 누르면 떼져요.'));
+    }
+    if (!$('#modal').hidden && S.info.locked && M && !M.ctx.teacher && (M.canEdit || M.canMove)) closeModal();
     renderMission();
-    renderBoard($('#stBoard'), studentCtx());
+    renderBoard($('#stBoard'), pres ? presentCtx(pres) : studentCtx());
   }
 
   // ---------- 교사 화면 ----------
@@ -504,7 +581,11 @@
     const tabs = $('#clsTabs'); tabs.innerHTML = '';
     for (let c = 1; c <= 8; c++) {
       const b = el('button', 'cls-tab' + (c === T.cls ? ' on' : ''), c + '반');
-      b.addEventListener('click', () => { if (c !== T.cls) watch(c); });
+      b.addEventListener('click', () => {
+        if (c === T.cls) return;
+        if (T.info && T.info.present) send('teacher:present', { cls: T.cls, group: null });
+        watch(c);
+      });
       tabs.appendChild(b);
     }
     if (document.activeElement !== $('#tTopic')) $('#tTopic').value = T.info.topic;
@@ -603,7 +684,7 @@
       foot.appendChild(el('span', null, grp.updatedAt ? '최근 활동 ' + rel(grp.updatedAt) : '활동 없음'));
       card.appendChild(foot);
 
-      card.addEventListener('click', () => { T.open = g; renderTeacher(); window.scrollTo(0, 0); });
+      card.addEventListener('click', () => { T.open = g; renderTeacher(); presentSync(); window.scrollTo(0, 0); });
       dash.appendChild(card);
     }
   }
@@ -614,22 +695,36 @@
     members($('#tDetailMembers'), grp);
     $('#tPrev').disabled = g <= 1;
     $('#tNext').disabled = g >= T.info.groupCount;
+    const tag = $('#tPresentTag');
+    const live = T.info.locked && T.info.present === g;
+    tag.className = 'present-tag' + (live ? ' live' : '');
+    tag.textContent = live ? '📺 학생 화면에 함께 띄우는 중 · 스티커 받는 중' : '';
+    const pbtn = $('#tPresentBtn');
+    pbtn.textContent = T.info.locked ? '🔓 잠금 풀고 각자 화면으로' : '🔒 잠그고 학생 화면에 띄우기';
+    pbtn.classList.toggle('locked', !!T.info.locked);
     renderBoard($('#tBoard'), teacherCtx(g));
   }
 
   const goGroup = d => {
     if (!T.open) return;
     const n = T.open + d;
-    if (n >= 1 && n <= T.info.groupCount) { T.open = n; renderTeacher(); }
+    if (n >= 1 && n <= T.info.groupCount) { T.open = n; renderTeacher(); presentSync(); }
   };
-  $('#tBack').addEventListener('click', () => { T.open = null; renderTeacher(); });
+  // 발표 모드: 편집 잠금 + 조 크게 보기 → 그 조를 반 전체 학생 화면에 띄움
+  function presentSync() {
+    if (!T.info) return;
+    const want = T.info.locked && T.open ? T.open : null;
+    if ((T.info.present || null) === want) return;
+    send('teacher:present', { cls: T.cls, group: want }, (err) => { if (err) toast('학생 화면을 바꾸지 못했어요. 다시 눌러 주세요.'); });
+  }
+  $('#tBack').addEventListener('click', () => { T.open = null; renderTeacher(); presentSync(); });
   $('#tPrev').addEventListener('click', () => goGroup(-1));
   $('#tNext').addEventListener('click', () => goGroup(1));
   document.addEventListener('keydown', e => {
     if (S.mode !== 'teacher' || !T.open || !$('#modal').hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
     if (e.key === 'ArrowLeft') goGroup(-1);
     if (e.key === 'ArrowRight') goGroup(1);
-    if (e.key === 'Escape') { T.open = null; renderTeacher(); }
+    if (e.key === 'Escape' && $('#timerBig').hidden && $('#imgView').hidden) { T.open = null; renderTeacher(); presentSync(); }
   });
 
   function tSettings(p, okMsg) {
@@ -646,7 +741,15 @@
   });
   $('#tTopic').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) $('#tTopicApply').click(); });
   $('#tGroupCount').addEventListener('change', e => tSettings({ groupCount: +e.target.value }));
-  $('#tLock').addEventListener('click', () => tSettings({ locked: !T.info.locked }));
+  $('#tPresentBtn').addEventListener('click', () => $('#tLock').click());
+  $('#tLock').addEventListener('click', () => {
+    const lock = !T.info.locked;
+    send('teacher:settings', { cls: T.cls, locked: lock }, (err, res) => {
+      if (err || !res || !res.ok) { toast('바꾸지 못했어요. 다시 눌러 주세요.'); return; }
+      if (lock && T.open) send('teacher:present', { cls: T.cls, group: T.open });
+      if (lock && T.open) toast('📺 ' + T.open + '조 공감지도를 학생 화면에 띄웠어요.');
+    });
+  });
 
   // 주제 사진: 노트북에서 고른 사진을 알맞은 크기로 줄여서 올림
   const pickImage = () => $('#tImgFile').click();
@@ -704,13 +807,13 @@
   });
 
   $('#tExport').addEventListener('click', () => {
-    const rows = [['반', '조', '영역', '내용', '작성자', '작성 시각']];
+    const rows = [['반', '조', '영역', '내용', '작성자', '작성 시각', '스티커']];
     const order = AREAS.map(a => a.key);
     for (let g = 1; g <= T.info.groupCount; g++) {
       tg(g).notes.slice()
         .filter(n => areaByKey(n.area))
         .sort((x, y) => order.indexOf(x.area) - order.indexOf(y.area) || x.createdAt - y.createdAt)
-        .forEach(n => rows.push([T.cls, g, areaByKey(n.area).title, n.text, n.author, new Date(n.createdAt).toLocaleString('ko-KR')]));
+        .forEach(n => rows.push([T.cls, g, areaByKey(n.area).title, n.text, n.author, new Date(n.createdAt).toLocaleString('ko-KR'), reactionText(n)]));
     }
     if (rows.length === 1) { toast('내려받을 포스트잇이 없어요.'); return; }
     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
@@ -752,11 +855,49 @@
 
   // ---------- 실시간 이벤트 ----------
   function apply(cls, group, fnc) {
-    if (S.mode === 'student' && S.me.cls === cls && S.me.group === group) { fnc(S.notes); renderStudent(); }
+    if (S.mode === 'student' && S.me.cls === cls) {
+      let hit = false;
+      if (S.me.group === group) { fnc(S.notes); hit = true; }
+      if (S.info.present === group) { fnc(S.presentNotes); hit = true; }
+      if (hit) renderStudent();
+    }
     if (S.mode === 'teacher' && T.cls === cls) { const g = tg(group); fnc(g.notes); g.updatedAt = Date.now(); renderTeacher(); }
   }
   socket.on('note:added', ({ cls, group, note }) => apply(cls, group, ns => { if (!ns.some(n => n.id === note.id)) ns.push(note); }));
-  socket.on('note:updated', ({ cls, group, note }) => apply(cls, group, ns => { const i = ns.findIndex(n => n.id === note.id); if (i >= 0) ns[i] = note; }));
+  socket.on('note:updated', ({ cls, group, note }) => {
+    if (patchReactions(cls, group, note)) return;
+    apply(cls, group, ns => { const i = ns.findIndex(n => n.id === note.id); if (i >= 0) ns[i] = note; });
+  });
+  // 스티커만 바뀐 경우: 화면 전체를 다시 그리지 않고 숫자만 바꿈 (여럿이 동시에 눌러도 터치가 씹히지 않게)
+  function patchReactions(cls, group, note) {
+    const lists = [];
+    if (S.mode === 'student' && S.me.cls === cls) {
+      if (S.me.group === group) lists.push(S.notes);
+      if (S.info.present === group) lists.push(S.presentNotes);
+    }
+    if (S.mode === 'teacher' && T.cls === cls) lists.push(tg(group).notes);
+    if (!lists.length) return false;
+    for (const ns of lists) {
+      const old = ns.find(n => n.id === note.id);
+      if (!old || old.text !== note.text || old.area !== note.area || old.color !== note.color) return false;
+    }
+    lists.forEach(ns => { const i = ns.findIndex(n => n.id === note.id); ns[i] = note; });
+    const r = note.reactions || {};
+    document.querySelectorAll('.note[data-id="' + CSS.escape(note.id) + '"]').forEach(d => {
+      const bar = d.querySelector('.rxbar');
+      if (bar) {
+        bar.querySelectorAll('.rx').forEach((b, i) => {
+          const list = r[REACTIONS[i].key] || [];
+          b.classList.toggle('on', list.includes(myKey()));
+          b.querySelector('b').textContent = list.length ? String(list.length) : '';
+        });
+      } else {
+        const sum = d.querySelector('.rxsum');
+        if (sum) sum.replaceWith(reactionsEl(note, {}));
+      }
+    });
+    return true;
+  }
   socket.on('note:deleted', ({ cls, group, id }) => apply(cls, group, ns => { const i = ns.findIndex(n => n.id === id); if (i >= 0) ns.splice(i, 1); }));
 
   socket.on('presence', ({ cls, group, names }) => {
@@ -776,6 +917,7 @@
   });
 
   socket.on('board:reset', ({ cls, group }) => {
+    if (S.mode === 'student' && S.me.cls === cls && S.info.present && (group == null || group === S.info.present)) S.presentNotes = [];
     if (S.mode === 'student' && S.me.cls === cls && (group == null || group === S.me.group)) {
       S.notes = []; renderStudent(); toast('선생님이 공감지도를 새로 시작했어요.');
     }
@@ -786,6 +928,19 @@
   });
 
   socket.on('save:status', s => { T.status = s; renderStatus(); });
+
+  socket.on('present', ({ cls, group, notes }) => {
+    if (S.mode === 'student' && S.me.cls === cls) {
+      const was = S.info.present;
+      S.info.present = group; S.presentNotes = notes || [];
+      if (!$('#modal').hidden) closeModal();
+      renderStudent();
+      window.scrollTo(0, 0);
+      if (group && group !== was) toast('📺 ' + group + '조 공감지도를 함께 봐요! 공감되는 포스트잇에 스티커를 붙여 보세요.', 4000);
+      else if (!group && was) toast('발표가 끝났어요. 우리 조 공감지도로 돌아왔어요.', 3000);
+    }
+    if (S.mode === 'teacher' && T.cls === cls) { T.info.present = group; renderTeacher(); }
+  });
 
   // ---------- 타이머 ----------
   // 서버 시계를 기준으로 남은 시간을 계산 (학생 태블릿과 TV가 같은 시간을 보여 줌)

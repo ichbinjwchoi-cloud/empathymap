@@ -49,6 +49,7 @@
     <button id="btnLeave" class="btn ghost">나가기</button>
   </header>
   <div id="lockBanner" class="lock-banner" hidden>🔒 선생님이 지금은 편집을 잠가 두었어요. 앞을 봐 주세요!</div>
+  <div id="presentBanner" class="present-banner" hidden></div>
   <div id="mission" class="mission"></div>
   <main id="stBoard" class="board-wrap"></main>
 </section>
@@ -107,6 +108,8 @@
       <button id="tPrev" class="btn ghost" title="이전 조 (←)">‹</button>
       <h2 id="tDetailTitle"></h2>
       <button id="tNext" class="btn ghost" title="다음 조 (→)">›</button>
+      <span id="tPresentTag" class="present-tag"></span>
+      <button id="tPresentBtn" class="btn"></button>
       <div class="members" id="tDetailMembers"></div>
       <span class="spacer"></span>
       <button id="tResetGroup" class="btn danger">이 조 지우기</button>

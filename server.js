@@ -20,6 +20,7 @@ const MAX_IMAGE = 1500000;  // 사진 최대 크기(바이트)
 const AREAS = ['think', 'hear', 'say', 'pain', 'gain'];
 const AREA_KO = { think: 'Think & Feel', hear: 'Hear', say: 'Say & Do', pain: 'Pain', gain: 'Gain (Want)' };
 const COLORS = ['yellow', 'pink', 'green', 'blue', 'orange', 'purple'];
+const REACTIONS = ['heart', 'best', 'laugh', 'cry', 'angry'];
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -47,7 +48,7 @@ function getGroup(cls, g) {
 }
 function classInfo(cls) {
   const c = getClass(cls);
-  return { topic: c.topic, groupCount: c.groupCount, locked: c.locked, image: c.image && db.images[c.image.id] ? c.image.id : null, timer: timerInfo(cls) };
+  return { topic: c.topic, groupCount: c.groupCount, locked: c.locked, image: c.image && db.images[c.image.id] ? c.image.id : null, timer: timerInfo(cls), present: c.locked && c.present ? c.present : null };
 }
 // 타이머: { state: 'idle' | 'running' | 'paused', endAt, left(멈췄을 때 남은 ms), total }
 function timerInfo(cls) {
@@ -274,7 +275,8 @@ function joinStudent(socket, p) {
   Object.assign(socket.data, { cls, group, name, clientId, owner: clientId + '|' + name });
   socket.join([cRoom(cls), gRoom(cls, group)]);
   presence(cls, group);
-  return { ok: true, info: classInfo(cls), notes: peekGroup(cls, group).notes };
+  const info = classInfo(cls);
+  return { ok: true, info, notes: peekGroup(cls, group).notes, presentNotes: info.present ? peekGroup(cls, info.present).notes : [] };
 }
 
 function target(socket, p) {
@@ -283,7 +285,14 @@ function target(socket, p) {
   return null;
 }
 function emitBoard(t, ev, payload) {
-  io.to([gRoom(t.cls, t.group), tRoom(t.cls)]).emit(ev, { cls: t.cls, group: t.group, ...payload });
+  const c = getClass(t.cls);
+  const rooms = [gRoom(t.cls, t.group), tRoom(t.cls)];
+  if (c.locked && c.present === t.group) rooms.push(cRoom(t.cls)); // 발표 중인 조는 반 전체가 봄
+  io.to(rooms).emit(ev, { cls: t.cls, group: t.group, ...payload });
+}
+function presentPayload(cls) {
+  const info = classInfo(cls);
+  return { cls, group: info.present, notes: info.present ? peekGroup(cls, info.present).notes : [] };
 }
 function emitClass(cls) {
   io.to([cRoom(cls), tRoom(cls)]).emit('class:settings', { cls, info: classInfo(cls) });
@@ -352,17 +361,43 @@ io.on('connection', socket => {
     const note = g.notes.find(n => n.id === p.id);
     if (!note) return ack({ ok: false, msg: '포스트잇을 찾을 수 없어요. 이미 지워졌을 수 있어요.' });
     const owner = isOwner(socket, note);
-    const before = note.text;
+    const before = note.text, beforeArea = note.area;
     // 칸 옮기기는 조원 누구나, 내용·색 고치기는 쓴 사람(또는 교사)만
-    if (p.area !== undefined && AREAS.includes(p.area)) note.area = p.area;
+    // 옮기기는 "보고 있던 칸(fromArea)"이 지금 칸과 같을 때만 — 오래된 화면 때문에 엉뚱하게 옮겨지는 것을 막음
+    let moveMsg = '';
+    if (p.area !== undefined && AREAS.includes(p.area) && p.area !== note.area) {
+      if (p.fromArea === undefined || p.fromArea === note.area) note.area = p.area;
+      else moveMsg = '그사이 다른 친구가 이 포스트잇을 옮겼어요. 화면을 확인해 주세요.';
+    }
     if (owner) {
       if (p.text !== undefined) { const tx = clean(p.text, 200); if (tx) note.text = tx; }
       if (p.color !== undefined && COLORS.includes(p.color)) note.color = p.color;
     }
     g.updatedAt = Date.now();
     if (note.text !== before) addLog('고침', t.cls, t.group, note);
+    if (note.area !== beforeArea) addLog('옮김 (' + (AREA_KO[beforeArea] || beforeArea) + ' → ' + (AREA_KO[note.area] || note.area) + ', 옮긴 사람: ' + (socket.data.teacher ? '선생님' : socket.data.name) + ')', t.cls, t.group, note);
     changed('db');
     emitBoard(t, 'note:updated', { note });
+    ack(moveMsg ? { ok: true, msg: moveMsg } : { ok: true });
+  });
+
+  // 발표 시간 스티커 (하트·최고·웃음·눈물·화남) — 누르면 붙고, 다시 누르면 떼기
+  socket.on('note:react', (p, ack) => {
+    ack = fn(ack); p = p || {};
+    if (!REACTIONS.includes(p.type) || !validCls(p.cls) || !validGroup(p.group)) return ack({ ok: false });
+    const cls = +p.cls, group = +p.group, c = getClass(cls);
+    const me = socket.data.teacher ? 'teacher' : (socket.data.cls === cls ? socket.data.owner : null);
+    if (!me) return ack({ ok: false, msg: '다시 입장해 주세요.' });
+    if (!socket.data.teacher && !(c.locked && c.present === group)) return ack({ ok: false, msg: '스티커는 발표 시간에 붙일 수 있어요.' });
+    const note = getGroup(cls, group).notes.find(n => n.id === p.id);
+    if (!note) return ack({ ok: false, msg: '포스트잇을 찾을 수 없어요.' });
+    note.reactions = note.reactions || {};
+    const list = note.reactions[p.type] = note.reactions[p.type] || [];
+    const i = list.indexOf(me);
+    if (i >= 0) list.splice(i, 1); else list.push(me);
+    if (!list.length) delete note.reactions[p.type];
+    changed('db');
+    emitBoard({ cls, group }, 'note:updated', { note });
     ack({ ok: true });
   });
 
@@ -424,9 +459,11 @@ io.on('connection', socket => {
     }
     const c = getClass(cls);
     if (p.groupCount !== undefined && validGroup(p.groupCount)) c.groupCount = +p.groupCount;
-    if (p.locked !== undefined) c.locked = !!p.locked;
+    const wasPresent = classInfo(cls).present;
+    if (p.locked !== undefined) { c.locked = !!p.locked; if (!c.locked) c.present = null; }
     changed('db');
     new Set([...list, cls]).forEach(emitClass);
+    if (wasPresent !== classInfo(cls).present) io.to([cRoom(cls), tRoom(cls)]).emit('present', presentPayload(cls));
     ack({ ok: true });
   });
 
@@ -477,6 +514,20 @@ io.on('connection', socket => {
     } else return ack({ ok: false });
     changed('db');
     io.to([cRoom(cls), tRoom(cls)]).emit('timer', { cls, timer: timerInfo(cls) });
+    ack({ ok: true });
+  });
+
+  // 발표 모드: 편집 잠금 중에 교사가 연 조를 반 전체 학생 화면에 띄움
+  socket.on('teacher:present', (p, ack) => {
+    ack = fn(ack); p = p || {};
+    if (!socket.data.teacher || !validCls(p.cls)) return ack({ ok: false });
+    const cls = +p.cls, c = getClass(cls);
+    const group = validGroup(p.group) && c.locked ? +p.group : null;
+    if ((c.present || null) === group) return ack({ ok: true });
+    c.present = group;
+    changed('db');
+    emitClass(cls);
+    io.to([cRoom(cls), tRoom(cls)]).emit('present', presentPayload(cls));
     ack({ ok: true });
   });
 
